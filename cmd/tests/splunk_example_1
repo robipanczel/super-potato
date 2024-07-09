@@ -1,0 +1,80 @@
+<dashboard script="example.js">
+  <label>Example</label>
+  <description>A Simple XML dashboard using extensions</description>
+  <row>
+    <panel>
+      <html>
+        Click a row in the table to trigger a click event
+        <br/><br/>
+        <div id="message"/>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Events table</title>
+      <event id="myevents">
+        <title>Top 5 results from index = _internal</title>
+        <search>
+          <query>index=_internal | head 5</query>
+          <earliest>0</earliest>
+        </search>
+        <option name="list.drilldown">outer</option>
+        <option name="list.wrap">1</option>
+        <option name="maxLines">5</option>
+        <option name="raw.drilldown">outer</option>
+        <option name="rowNumbers">0</option>
+        <option name="table.drilldown">all</option>
+        <option name="table.wrap">1</option>
+        <option name="type">list</option>
+        <option name="wrap">true</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="count">2</option>
+        <fields>["host","source","sourcetype"]</fields>
+      </event>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Events table</title>
+      <event id="myevents">
+        <title>Top 5 results from index = _internal</title>
+        <search id="whatever">
+          <query>index=_internal | head 5 | savedsearch foo | search moduleId=12345</query>
+          <earliest>0</earliest>
+        </search>
+        <option name="list.drilldown">outer</option>
+        <option name="list.wrap">1</option>
+        <option name="maxLines">5</option>
+      </event>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Events table</title>
+      <event id="myevents">
+        <title>Top 5 results from index = _internal</title>
+        <search id="whatever">
+          <query>index=_internal | head 5 | savedsearch foo | search moduleId=12345</query>
+          <earliest>0</earliest>
+        </search>
+        <option name="list.drilldown">outer</option>
+        <option name="list.wrap">1</option>
+        <option name="maxLines">5</option>
+      </event>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Events table</title>
+      <event id="myevents">
+        <title>Top 5 results from index = _internal</title>
+        <search id="whatever">
+          <query>index=_internal | head 5 | savedsearch bar | search moduleId=12345</query>
+          <earliest>0</earliest>
+        </search>
+        <option name="list.drilldown">outer</option>
+      </event>
+    </panel>
+  </row>
+</dashboard>
