@@ -18,110 +18,110 @@ import (
 // cloneCmd represents the clone command
 var cloneCmd = &cobra.Command{
 	Use:   "clone",
-	Short: "Clone dashboard and create copies with featureId prefix",
+	Short: "Clone and rename dashboard and saved searches, replacing old prefix with new prefix value",
 	Long: `Download dashboard based on the given URL
-	and create copies of it with the featureId prefix in the name
+	and create copies of it with the newPrefix prefix in the name
 	Ideally the dashboard should be the stating dashboard.`,
 	Run: runClone,
 }
 
 var dashboard string
-var reportPrefix string
-var featureId string
-var separator string
+var oldPrefix string
+var newPrefix string
+var prefixSeparator string
 
 func init() {
 	cloneCmd.Flags().StringVarP(&dashboard, "dashboard", "d", "", "URL of the dashboard from which to clone from (required)")
-	cloneCmd.Flags().StringVarP(&reportPrefix, "reportPrefix", "r", "", "Prefix of the dashboard and its reports")
-	cloneCmd.Flags().StringVarP(&featureId, "featureId", "f", "", "ID of the feature that the clone dashboard is for")
+	cloneCmd.Flags().StringVarP(&oldPrefix, "oldPrefix", "r", "", "Prefix of the current dashboard and its saved searches")
+	cloneCmd.Flags().StringVarP(&newPrefix, "newPrefix", "f", "", "ID of the feature that the clone dashboard is for")
 	cloneCmd.MarkFlagRequired("dashboard")
 
-	separator = "_"
+	prefixSeparator = "_"
 
 	rootCmd.AddCommand(cloneCmd)
 }
 
 func runClone(cmd *cobra.Command, args []string) {
-	slog.Info("clone command initiated", "dashboard", dashboard, "featureId", featureId)
+	slog.Info("clone command initiated", "dashboard", dashboard, "newPrefix", newPrefix)
 
-	reportNames := make([]string, 0, 10)
-	reportNames = append(reportNames, dashboard)
-	processedReportCounter := 0
+	savedSearches := make([]string, 0, 10)
+	savedSearches = append(savedSearches, dashboard)
+	processedSavedSearches := 0
 
-	for len(reportNames) != processedReportCounter {
-		currentReportName := reportNames[processedReportCounter]
-		processedReportCounter = processedReportCounter + 1
+	for len(savedSearches) != processedSavedSearches {
+		savedSearchId := savedSearches[processedSavedSearches]
+		processedSavedSearches = processedSavedSearches + 1
 
-		xmlString, err := ReadXml(currentReportName)
+		xmlString, err := ReadXml(savedSearchId)
 		if err != nil {
 			slog.Error("failed to load xml",
 				"dashboard", dashboard,
-				"name", currentReportName,
+				"savedSearchId", savedSearchId,
 				"error", err,
 			)
 			panic(err)
 		}
 
-		foundReportNames := CollectLinkedReportsFromXmlString(xmlString, dashboard, currentReportName, reportPrefix)
+		foundReportNames := FindAllSavedSearchIds(xmlString, dashboard, savedSearchId)
 		slog.Info("reports found",
 			"dashboard", dashboard,
-			"current", currentReportName,
+			"savedSearchId", savedSearchId,
 			"linked reports", foundReportNames,
 		)
-		reportNames = append(reportNames, foundReportNames...)
+		savedSearches = append(savedSearches, foundReportNames...)
 
-		withNewPrefix := ReplaceOldPrefixWithNewPrefix(currentReportName, reportPrefix, featureId, separator)
-		xmlString = ReplaceOldPrefixWithNewPrefixInXml(xmlString, reportPrefix, featureId, separator, foundReportNames)
+		withNewPrefix := ReplaceOldPrefixWithNewPrefix(savedSearchId, oldPrefix, newPrefix, prefixSeparator)
+		xmlString = ReplaceOldPrefixWithNewPrefixInXml(xmlString, oldPrefix, newPrefix, prefixSeparator, foundReportNames)
 
 		err = WriteXml(withNewPrefix, xmlString)
 		if err != nil {
 			slog.Error("failed to upload cloned xml",
 				"dashboard", dashboard,
-				"current", currentReportName,
+				"savedSearchId", savedSearchId,
 				"error", err,
 			)
 			panic(err)
 		}
 
 	}
-	slog.Info("clone command done", "dashboard", dashboard, "featureId", featureId, "generated reports", reportNames)
+	slog.Info("clone command done", "dashboard", dashboard, "newPrefix", newPrefix, "generated reports", savedSearches)
 }
 
-func CollectLinkedReportsFromXmlString(xmlString string, dashboard string, currentReport string, reportPrefix string) (reportNames []string) {
+func FindAllSavedSearchIds(xmlString string, dashboard string, savedSearchId string) (savedSearchIds []string) {
 	re := regexp.MustCompile(`savedsearch\s([a-z1-9]|\_|\-)*[^\s]`)
-	linkedReportNames := re.FindAllString(xmlString, -1)
-	reportNames = make([]string, 0)
-	for _, linkedReportName := range linkedReportNames {
-		_, after, found := strings.Cut(linkedReportName, "savedsearch")
+	foundSavedSearchCmds := re.FindAllString(xmlString, -1)
+	savedSearchIds = make([]string, 0)
+	for _, foundSavedSearchCmd := range foundSavedSearchCmds {
+		_, after, found := strings.Cut(foundSavedSearchCmd, "savedsearch")
 		if !found {
 			slog.Error("failed to parse report name",
 				"dashboard", dashboard,
-				"current", currentReport,
+				"savedSearchId", savedSearchId,
 			)
 		}
 
-		trimmedLinkedReportName := strings.TrimSpace(after)
+		cleanedSavedSearchId := strings.TrimSpace(after)
 
-		if slices.Contains(reportNames, trimmedLinkedReportName) {
+		if slices.Contains(savedSearchIds, cleanedSavedSearchId) {
 			continue
 		}
 
-		reportNames = append(reportNames, trimmedLinkedReportName)
+		savedSearchIds = append(savedSearchIds, cleanedSavedSearchId)
 	}
 
-	return reportNames
+	return savedSearchIds
 }
 
-func ReplaceOldPrefixWithNewPrefixInXml(xmlString, oldPrefix, newPrefix, separator string, reportNames []string) string {
-	for _, foundReportName := range reportNames {
-		withNewPrefix := ReplaceOldPrefixWithNewPrefix(foundReportName, oldPrefix, newPrefix, separator)
-		xmlString = strings.ReplaceAll(xmlString, foundReportName, withNewPrefix)
+func ReplaceOldPrefixWithNewPrefixInXml(xmlString, oldPrefix, newPrefix, separator string, savedSearchIds []string) string {
+	for _, savedSearchId := range savedSearchIds {
+		withNewPrefix := ReplaceOldPrefixWithNewPrefix(savedSearchId, oldPrefix, newPrefix, separator)
+		xmlString = strings.ReplaceAll(xmlString, savedSearchId, withNewPrefix)
 	}
 	return xmlString
 }
 
-func ReplaceOldPrefixWithNewPrefix(foundReportName, oldPrefix, newPrefix, separator string) string {
-	withoutPrefix := strings.TrimPrefix(foundReportName, oldPrefix)
+func ReplaceOldPrefixWithNewPrefix(savedSearchId, oldPrefix, newPrefix, separator string) string {
+	withoutPrefix := strings.TrimPrefix(savedSearchId, oldPrefix)
 	withoutPrefixAndSeparator := strings.TrimPrefix(withoutPrefix, separator)
 	withNewPrefix := fmt.Sprintf("%s%s%s", newPrefix, separator, withoutPrefixAndSeparator)
 	return withNewPrefix
