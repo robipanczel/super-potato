@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -29,6 +30,8 @@ var dashboard string
 var oldPrefix string
 var newPrefix string
 var prefixSeparator string
+var rootWorkDirPath string
+var rootBackupPath string
 
 func init() {
 	cloneCmd.Flags().StringVarP(&dashboard, "dashboard", "d", "", "URL of the dashboard from which to clone from (required)")
@@ -37,12 +40,23 @@ func init() {
 	cloneCmd.MarkFlagRequired("dashboard")
 
 	prefixSeparator = "_"
+	rootWorkDirPath = filepath.Join(".", "temp")
+	rootBackupPath = filepath.Join(".", "temp")
 
 	rootCmd.AddCommand(cloneCmd)
 }
 
 func runClone(cmd *cobra.Command, args []string) {
 	slog.Info("clone command initiated", "dashboard", dashboard, "newPrefix", newPrefix)
+
+	createdBackupPath, err := CreateBackupDir(rootBackupPath)
+	if err != nil {
+		slog.Error("failed to create backup directory",
+			"dashboard", dashboard,
+			"error", err,
+		)
+		panic(err)
+	}
 
 	savedSearches := make([]string, 0, 10)
 	savedSearches = append(savedSearches, dashboard)
@@ -52,9 +66,19 @@ func runClone(cmd *cobra.Command, args []string) {
 		savedSearchId := savedSearches[processedSavedSearches]
 		processedSavedSearches = processedSavedSearches + 1
 
-		xmlString, err := ReadXml(savedSearchId)
+		xmlString, err := ReadXml(filepath.Join(".", "cmd", "tests"), savedSearchId)
 		if err != nil {
-			slog.Error("failed to load xml",
+			slog.Error("failed to load saved search",
+				"dashboard", dashboard,
+				"savedSearchId", savedSearchId,
+				"error", err,
+			)
+			panic(err)
+		}
+
+		err = WriteXml(createdBackupPath, savedSearchId, []byte(xmlString))
+		if err != nil {
+			slog.Error("failed to backup saved search",
 				"dashboard", dashboard,
 				"savedSearchId", savedSearchId,
 				"error", err,
@@ -63,17 +87,19 @@ func runClone(cmd *cobra.Command, args []string) {
 		}
 
 		foundReportNames := FindAllSavedSearchIds(xmlString, dashboard, savedSearchId)
-		slog.Info("reports found",
+		slog.Info("saved search found",
 			"dashboard", dashboard,
 			"savedSearchId", savedSearchId,
-			"linked reports", foundReportNames,
+			"linked saved searches", foundReportNames,
 		)
 		savedSearches = append(savedSearches, foundReportNames...)
 
 		withNewPrefix := ReplaceOldPrefixWithNewPrefix(savedSearchId, oldPrefix, newPrefix, prefixSeparator)
 		xmlString = ReplaceOldPrefixWithNewPrefixInXml(xmlString, oldPrefix, newPrefix, prefixSeparator, foundReportNames)
 
-		err = WriteXml(withNewPrefix, xmlString)
+		//TODO: Make this into an opt in feature
+		// This is for testing/validation
+		err = WriteXml(rootWorkDirPath, withNewPrefix, []byte(xmlString))
 		if err != nil {
 			slog.Error("failed to upload cloned xml",
 				"dashboard", dashboard,
@@ -84,7 +110,7 @@ func runClone(cmd *cobra.Command, args []string) {
 		}
 
 	}
-	slog.Info("clone command done", "dashboard", dashboard, "newPrefix", newPrefix, "generated reports", savedSearches)
+	slog.Info("clone command done", "dashboard", dashboard, "newPrefix", newPrefix, "generated saved searches", savedSearches)
 }
 
 func FindAllSavedSearchIds(xmlString string, dashboard string, savedSearchId string) (savedSearchIds []string) {
@@ -127,8 +153,29 @@ func ReplaceOldPrefixWithNewPrefix(savedSearchId, oldPrefix, newPrefix, separato
 	return withNewPrefix
 }
 
-func ReadXml(name string) (xmlString string, err error) {
-	data, err := os.ReadFile(filepath.Join(".", "tests", name))
+func CreateBackupDir(rootBackupPath string) (createdBackupPath string, err error) {
+	currentTime := time.Now()
+	createdBackupPath = filepath.Join(
+		rootBackupPath,
+		fmt.Sprintf("%d-%d-%d-%d-%d-%d",
+			currentTime.Year(),
+			currentTime.Month(),
+			currentTime.Day(),
+			currentTime.Hour(),
+			currentTime.Hour(),
+			currentTime.Second(),
+		),
+	)
+
+	err = os.Mkdir(createdBackupPath, os.ModePerm)
+	if err != nil {
+		return "", err
+	}
+	return createdBackupPath, nil
+}
+
+func ReadXml(filePath string, name string) (xmlString string, err error) {
+	data, err := os.ReadFile(filepath.Join(filePath, name))
 	if err != nil {
 		return "", err
 	}
@@ -136,8 +183,8 @@ func ReadXml(name string) (xmlString string, err error) {
 	return string(data), nil
 }
 
-func WriteXml(name string, xml string) error {
-	err := os.WriteFile(filepath.Join("temp", name), []byte(xml), os.ModePerm)
+func WriteXml(filePath string, name string, data []byte) error {
+	err := os.WriteFile(filepath.Join(filePath, name), data, os.ModePerm)
 	if err != nil {
 		return err
 	}

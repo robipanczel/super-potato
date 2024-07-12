@@ -7,7 +7,7 @@ import (
 )
 
 func TestReadXml_ExistingXml(t *testing.T) {
-	data, err := ReadXml("splunk_example_1")
+	data, err := ReadXml("./tests", "splunk_example_1")
 
 	if err != nil {
 		t.Errorf("should have read the file, but found: %s", err)
@@ -19,7 +19,7 @@ func TestReadXml_ExistingXml(t *testing.T) {
 }
 
 func TestReadXml_NotExistingXml(t *testing.T) {
-	_, err := ReadXml("barfoo")
+	_, err := ReadXml("./tests", "barfoo")
 	if err == nil {
 		t.Errorf("should have thrown an error if file does not exits")
 	}
@@ -99,4 +99,39 @@ func TestReplaceOldPrefixWithNewPrefixInXml(t *testing.T) {
 	if result != expectedResult {
 		t.Errorf("ReplaceOldPrefixWithNewPrefixInXml() = %s, expected %s", result, expectedResult)
 	}
+}
+
+func TestCreateBackupDir(t *testing.T) {
+	rootBackupPath := "../temp"
+
+	createdBackupPath, err := CreateBackupDir(rootBackupPath)
+	if err != nil {
+		t.Errorf("CreateBackupDir returned an error: %s", err)
+	}
+
+	// Verify that the backup directory was created
+	backupDirExists, err := exists(createdBackupPath)
+	if err != nil {
+		t.Errorf("Failed to check if backup directory exists: %s", err)
+	}
+	if !backupDirExists {
+		t.Errorf("Backup directory was not created")
+	}
+
+	// Cleanup: Remove the backup directory
+	err = os.RemoveAll(createdBackupPath)
+	if err != nil {
+		t.Errorf("Failed to remove backup directory: %s", err)
+	}
+}
+
+func exists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
