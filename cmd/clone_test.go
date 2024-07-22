@@ -95,7 +95,7 @@ func TestReplaceOldPrefixWithNewPrefixInXml(t *testing.T) {
 </dashboard>
 `
 
-	result := ReplaceOldPrefixWithNewPrefixInXml(xmlString, oldPrefix, newPrefix, separator, reportNames)
+	result := ReplaceOldPrefixWithNewPrefixInSplunkQuery(xmlString, oldPrefix, newPrefix, separator, reportNames)
 	if result != expectedResult {
 		t.Errorf("ReplaceOldPrefixWithNewPrefixInXml() = %s, expected %s", result, expectedResult)
 	}

@@ -29,15 +29,17 @@ var cloneCmd = &cobra.Command{
 var dashboard string
 var oldPrefix string
 var newPrefix string
+
+// TODO: The following variables should be coming from a configuration file but also should be possible changed from commandline
 var prefixSeparator string
 var rootWorkDirPath string
 var rootBackupPath string
 
 func init() {
 	cloneCmd.Flags().StringVarP(&dashboard, "dashboard", "d", "", "URL of the dashboard from which to clone from (required)")
+	cloneCmd.MarkFlagRequired("dashboard")
 	cloneCmd.Flags().StringVarP(&oldPrefix, "oldPrefix", "r", "", "Prefix of the current dashboard and its saved searches")
 	cloneCmd.Flags().StringVarP(&newPrefix, "newPrefix", "f", "", "ID of the feature that the clone dashboard is for")
-	cloneCmd.MarkFlagRequired("dashboard")
 
 	prefixSeparator = "_"
 	rootWorkDirPath = filepath.Join(".", "temp")
@@ -58,15 +60,15 @@ func runClone(cmd *cobra.Command, args []string) {
 		panic(err)
 	}
 
-	savedSearches := make([]string, 0, 10)
-	savedSearches = append(savedSearches, dashboard)
-	processedSavedSearches := 0
+	savedSearchIds := make([]string, 0, 10)
+	savedSearchIds = append(savedSearchIds, dashboard)
+	processedSavedSearchIds := 0
 
-	for len(savedSearches) != processedSavedSearches {
-		savedSearchId := savedSearches[processedSavedSearches]
-		processedSavedSearches = processedSavedSearches + 1
+	for len(savedSearchIds) != processedSavedSearchIds {
+		savedSearchId := savedSearchIds[processedSavedSearchIds]
+		processedSavedSearchIds = processedSavedSearchIds + 1
 
-		xmlString, err := ReadXml(filepath.Join(".", "cmd", "tests"), savedSearchId)
+		splunkQuery, err := ReadXml(filepath.Join(".", "cmd", "tests"), savedSearchId)
 		if err != nil {
 			slog.Error("failed to load saved search",
 				"dashboard", dashboard,
@@ -76,7 +78,7 @@ func runClone(cmd *cobra.Command, args []string) {
 			panic(err)
 		}
 
-		err = WriteXml(createdBackupPath, savedSearchId, []byte(xmlString))
+		err = WriteXml(createdBackupPath, savedSearchId, []byte(splunkQuery))
 		if err != nil {
 			slog.Error("failed to backup saved search",
 				"dashboard", dashboard,
@@ -86,20 +88,19 @@ func runClone(cmd *cobra.Command, args []string) {
 			panic(err)
 		}
 
-		foundReportNames := FindAllSavedSearchIds(xmlString, dashboard, savedSearchId)
+		savedSearchIdsFound := FindAllSavedSearchIds(splunkQuery, dashboard, savedSearchId)
 		slog.Info("saved search found",
 			"dashboard", dashboard,
 			"savedSearchId", savedSearchId,
-			"linked saved searches", foundReportNames,
+			"linked saved searches", savedSearchIdsFound,
 		)
-		savedSearches = append(savedSearches, foundReportNames...)
+		savedSearchIds = append(savedSearchIds, savedSearchIdsFound...)
 
-		withNewPrefix := ReplaceOldPrefixWithNewPrefix(savedSearchId, oldPrefix, newPrefix, prefixSeparator)
-		xmlString = ReplaceOldPrefixWithNewPrefixInXml(xmlString, oldPrefix, newPrefix, prefixSeparator, foundReportNames)
+		newSavedSearchId := ReplaceOldPrefixWithNewPrefix(savedSearchId, oldPrefix, newPrefix, prefixSeparator)
+		newSplunkQuery := ReplaceOldPrefixWithNewPrefixInSplunkQuery(splunkQuery, oldPrefix, newPrefix, prefixSeparator, savedSearchIdsFound)
 
-		//TODO: Make this into an opt in feature
-		// This is for testing/validation
-		err = WriteXml(rootWorkDirPath, withNewPrefix, []byte(xmlString))
+		// TODO: Make this into an opt in feature for validation and testing
+		err = WriteXml(rootWorkDirPath, newSavedSearchId, []byte(newSplunkQuery))
 		if err != nil {
 			slog.Error("failed to upload cloned xml",
 				"dashboard", dashboard,
@@ -109,13 +110,14 @@ func runClone(cmd *cobra.Command, args []string) {
 			panic(err)
 		}
 
+		// TODO: Upload the newSavedSearchId and newSplunkQuery to Splunk
 	}
-	slog.Info("clone command done", "dashboard", dashboard, "newPrefix", newPrefix, "generated saved searches", savedSearches)
+	slog.Info("clone command done", "dashboard", dashboard, "newPrefix", newPrefix, "generated saved searches", savedSearchIds)
 }
 
-func FindAllSavedSearchIds(xmlString string, dashboard string, savedSearchId string) (savedSearchIds []string) {
+func FindAllSavedSearchIds(splunkQuery string, dashboard string, savedSearchId string) (savedSearchIds []string) {
 	re := regexp.MustCompile(`savedsearch\s([a-z1-9]|\_|\-)*[^\s]`)
-	foundSavedSearchCmds := re.FindAllString(xmlString, -1)
+	foundSavedSearchCmds := re.FindAllString(splunkQuery, -1)
 	savedSearchIds = make([]string, 0)
 	for _, foundSavedSearchCmd := range foundSavedSearchCmds {
 		_, after, found := strings.Cut(foundSavedSearchCmd, "savedsearch")
@@ -138,12 +140,12 @@ func FindAllSavedSearchIds(xmlString string, dashboard string, savedSearchId str
 	return savedSearchIds
 }
 
-func ReplaceOldPrefixWithNewPrefixInXml(xmlString, oldPrefix, newPrefix, separator string, savedSearchIds []string) string {
+func ReplaceOldPrefixWithNewPrefixInSplunkQuery(splunkQuery, oldPrefix, newPrefix, separator string, savedSearchIds []string) string {
 	for _, savedSearchId := range savedSearchIds {
 		withNewPrefix := ReplaceOldPrefixWithNewPrefix(savedSearchId, oldPrefix, newPrefix, separator)
-		xmlString = strings.ReplaceAll(xmlString, savedSearchId, withNewPrefix)
+		splunkQuery = strings.ReplaceAll(splunkQuery, savedSearchId, withNewPrefix)
 	}
-	return xmlString
+	return splunkQuery
 }
 
 func ReplaceOldPrefixWithNewPrefix(savedSearchId, oldPrefix, newPrefix, separator string) string {
@@ -183,8 +185,8 @@ func ReadXml(filePath string, name string) (xmlString string, err error) {
 	return string(data), nil
 }
 
-func WriteXml(filePath string, name string, data []byte) error {
-	err := os.WriteFile(filepath.Join(filePath, name), data, os.ModePerm)
+func WriteXml(filePath string, name string, splunkQuery []byte) error {
+	err := os.WriteFile(filepath.Join(filePath, name), splunkQuery, os.ModePerm)
 	if err != nil {
 		return err
 	}
