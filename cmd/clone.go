@@ -4,8 +4,13 @@ Copyright © 2024 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -190,5 +195,55 @@ func WriteXml(filePath string, name string, splunkQuery []byte) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func GetRequest(url string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("error making GET request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("error reading response body: %v", err)
+	}
+
+	var response struct {
+		LongString string `json:"long_string"`
+	}
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return "", fmt.Errorf("error unmarshaling JSON: %v", err)
+	}
+
+	return response.LongString, nil
+}
+
+func PostRequest(url string, longString string) error {
+	payload := struct {
+		LongString string `json:"long_string"`
+	}{
+		LongString: longString,
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("error marshaling JSON payload: %v", err)
+	}
+
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("error making POST request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("error reading response body: %v", err)
+	}
+
+	fmt.Printf("Response: %s\n", string(body))
 	return nil
 }
